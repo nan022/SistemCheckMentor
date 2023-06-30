@@ -6,7 +6,8 @@ import jwt
 import hashlib
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from werkzeug.utils import secure_filename
-import pandas as pd
+# import pandas as pd
+import csv
 from collections import defaultdict
 import datetime as dt
 from datetime import datetime, timedelta
@@ -301,19 +302,21 @@ def mentor_check():
             time_off = dt.datetime.strptime(request.form['time_off'], '%Y-%m-%dT%H:%M')
 
             if file:
-                df = pd.read_csv(file)
+                csv_file = file.read().decode('utf-8')
+                csv_reader = csv.DictReader(csv_file.splitlines())
+
                 selected_columns = ['Learners Name', 'Institute Name', 'Course Title', 'Submission Date', 'Status']
-                selected_data = df[selected_columns]
 
                 current_date = dt.date.today()
                 previous_day = current_date - timedelta(days=1)  # Use timedelta
                 cutoff_time = dt.datetime.combine(previous_day, dt.time(hour=21, minute=0))
 
                 grouped_data = defaultdict(list)
-                for index, row in selected_data.iterrows():
+                for row in csv_reader:
+                    row = {k.strip(): v.strip() for k, v in row.items()}
                     date_string = row['Submission Date']
                     date_value = float(date_string)
-                    date_format = pd.to_datetime(date_value, unit='ms')
+                    date_format = dt.datetime.utcfromtimestamp(date_value / 1000)
 
                     if row['Status'] == 'pending' and date_format < time_off:
                         institute_name = row['Institute Name']
@@ -326,7 +329,7 @@ def mentor_check():
                             'Status': row['Status'],
                             'MentorList': get_mentor_by_institute(institute_name, course_title)
                         }
-                        print(item)
+                        # print(item)
                         grouped_data[(institute_name, course_title)].append(item)
 
                 result = []
@@ -337,7 +340,6 @@ def mentor_check():
                         'DataList': data_list
                     }
                     result.append(item)
-
                 return render_template('checking_mentor.html', result=result, user_info=user_info)
         return render_template('checking_mentor.html', user_info=user_info)
     except jwt.ExpiredSignatureError:
@@ -346,6 +348,67 @@ def mentor_check():
     except jwt.exceptions.DecodeError:
         msg = 'There was a problem logging you in'
         return redirect(url_for('login', msg=msg))
+
+# @app.route('/mentor_check', methods=['GET', 'POST'])
+# def mentor_check():
+#     token_receive = request.cookies.get(TOKEN_KEY)
+#     try:
+#         payload = jwt.decode(
+#             token_receive,
+#             SECRET_KEY,
+#             algorithms=['HS256']
+#         )
+#         user_info = db.users.find_one({'email': payload.get('email')})
+#         if request.method == 'POST':
+#             file = request.files['file']
+#             time_off = dt.datetime.strptime(request.form['time_off'], '%Y-%m-%dT%H:%M')
+
+#             if file:
+#                 df = pd.read_csv(file)
+#                 selected_columns = ['Learners Name', 'Institute Name', 'Course Title', 'Submission Date', 'Status']
+#                 selected_data = df[selected_columns]
+
+#                 current_date = dt.date.today()
+#                 previous_day = current_date - timedelta(days=1)  # Use timedelta
+#                 cutoff_time = dt.datetime.combine(previous_day, dt.time(hour=21, minute=0))
+
+#                 grouped_data = defaultdict(list)
+#                 for index, row in selected_data.iterrows():
+#                     date_string = row['Submission Date']
+#                     date_value = float(date_string)
+#                     date_format = pd.to_datetime(date_value, unit='ms')
+
+#                     if row['Status'] == 'pending' and date_format < time_off:
+#                         institute_name = row['Institute Name']
+#                         course_title = row['Course Title']
+#                         item = {
+#                             'Learners Name': row['Learners Name'],
+#                             'Institute Name': institute_name,
+#                             'Course Title': course_title,
+#                             'SubmissionDate': date_format.strftime('%Y-%m-%d %H:%M'),
+#                             'Status': row['Status'],
+#                             'MentorList': get_mentor_by_institute(institute_name, course_title)
+#                         }
+#                         print(item)
+#                         grouped_data[(institute_name, course_title)].append(item)
+
+#                 result = []
+#                 for key, data_list in grouped_data.items():
+#                     item = {
+#                         'Institute Name': key[0],
+#                         'Course Title': key[1],
+#                         'DataList': data_list
+#                     }
+#                     result.append(item)
+
+#                 return render_template('checking_mentor.html', result=result, user_info=user_info)
+#         return render_template('checking_mentor.html', user_info=user_info)
+#     except jwt.ExpiredSignatureError:
+#         msg = 'Your token has expired'
+#         return redirect(url_for('login', msg=msg))
+#     except jwt.exceptions.DecodeError:
+#         msg = 'There was a problem logging you in'
+#         return redirect(url_for('login', msg=msg))
 
     
 if __name__ == '__main__':
